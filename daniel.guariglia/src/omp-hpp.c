@@ -238,12 +238,38 @@ int main( int argc, char* argv[] )
     double tstart, tstop;
     tstart = omp_get_wtime();
 
+        printf("OMP CUR 0:");
+        for(int i = 0; i < N*N; i++){
+            if(i%N == 0){
+                printf("\n");
+            }
+            printf("%d ", cur[i]);
+        }
+        printf("\n\n");
+
     for (t=0; t<nsteps; t++) {
 #ifdef DUMP_ALL
         write_image(cur, N, t);
 #endif
         step(cur, next, N, EVEN_PHASE);
+        printf("OMP POST EVEN:");
+        for(int i = 0; i < N*N; i++){
+            if(i%N == 0){
+                printf("\n");
+            }
+            printf("%d ", next[i]);
+        }
+        printf("\n\n");
+
         step(next, cur, N, ODD_PHASE);
+        printf("OMP POST ODD:");
+        for(int i = 0; i < N*N; i++){
+            if(i%N == 0){
+                printf("\n");
+            }
+            printf("%d ", cur[i]);
+        }
+        printf("\n\n");
     }
 #ifdef DUMP_ALL
     /* Reverse all particles and go back to the initial state */
