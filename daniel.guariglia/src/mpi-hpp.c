@@ -317,6 +317,275 @@ void write_image(const cell_t *grid, int N, int frameno)
     fwrite(grid, 1, N * N, f);
     fclose(f);
 }
+void invert_row_for_EVEN(cell_t *my_next, int *sendcnts, int N, int comm_sz, int my_rank)
+{
+    // scambio delle ghost cells
+    // i processi di indice pari inviano al thread di indice più piccolo la loro prima riga
+    if (my_rank == 0)
+    {
+        // invio al processo di rank 1 l'ultima riga
+        // ricevo dall'ultimo la nuova prima riga
+        MPI_Send(
+            &my_next[sendcnts[my_rank] * 2 * N], // buf
+            N,                                   // count
+            MPI_UNSIGNED_CHAR,                   // data type
+            1,                                   // dest
+            0,                                   // tag
+            MPI_COMM_WORLD);
+
+        MPI_Recv(
+            my_next,           // buf
+            N,                 // count
+            MPI_UNSIGNED_CHAR, // data type
+            comm_sz - 1,       // source
+            MPI_ANY_TAG,       // tag
+            MPI_COMM_WORLD,
+            MPI_STATUS_IGNORE // status
+        );
+    }
+    if (my_rank == comm_sz - 1)
+    {
+        // ricevo dal processo comm_sz -2 la nuova prima riga
+        // invio al processo 0 l'ultima
+        MPI_Recv(
+            my_next,           // buf
+            N,                 // count
+            MPI_UNSIGNED_CHAR, // data type
+            my_rank - 1,       // source
+            MPI_ANY_TAG,       // tag
+            MPI_COMM_WORLD,
+            MPI_STATUS_IGNORE // status
+        );
+
+        MPI_Send(
+            &my_next[sendcnts[my_rank] * 2 * N], // buf
+            N,                                   // count
+            MPI_UNSIGNED_CHAR,                   // data type
+            0,                                   // dest
+            0,                                   // tag
+            MPI_COMM_WORLD);
+    }
+    if (my_rank > 0 && my_rank < comm_sz - 1)
+    {
+        if (my_rank % 2 == 0)
+        {
+            // invio a my_rank +1 l'ultima riga
+            // ricevo da my_rank -1 la prima
+            MPI_Send(
+                &my_next[sendcnts[my_rank] * 2 * N], // buf
+                N,                                   // count
+                MPI_UNSIGNED_CHAR,                   // data type
+                my_rank + 1,                         // dest
+                0,                                   // tag
+                MPI_COMM_WORLD);
+
+            MPI_Recv(
+                my_next,           // buf
+                N,                 // count
+                MPI_UNSIGNED_CHAR, // data type
+                my_rank - 1,       // source
+                MPI_ANY_TAG,       // tag
+                MPI_COMM_WORLD,
+                MPI_STATUS_IGNORE // status
+            );
+        }
+        if (my_rank % 2 == 1)
+        {
+            // ricevo da my_rank -1 la prima
+            // invio a my_rank +1 l'ultima
+            MPI_Recv(
+                my_next,           // buf
+                N,                 // count
+                MPI_UNSIGNED_CHAR, // data type
+                my_rank - 1,       // source
+                MPI_ANY_TAG,       // tag
+                MPI_COMM_WORLD,
+                MPI_STATUS_IGNORE // status
+            );
+
+            MPI_Send(
+                &my_next[sendcnts[my_rank] * 2 * N], // buf
+                N,                                   // count
+                MPI_UNSIGNED_CHAR,                   // data type
+                my_rank + 1,                         // dest
+                0,                                   // tag
+                MPI_COMM_WORLD);
+        }
+    }
+}
+
+void invert_row_for_ODD(cell_t *my_next, int *sendcnts, int N, int comm_sz, int my_rank)
+{
+    // scambio delle ghost cells
+    // i processi di indice pari inviano al thread di indice più piccolo la loro prima riga
+    if (my_rank == 0)
+    {
+        // invio al ultimo processo
+        // ricevo dall'uno
+        MPI_Send(
+            my_next,           // buf
+            N,                 // count
+            MPI_UNSIGNED_CHAR, // data type
+            comm_sz - 1,       // dest
+            0,                 // tag
+            MPI_COMM_WORLD);
+
+        MPI_Recv(
+            &my_next[sendcnts[my_rank] * 2 * N], // buf
+            N,                                   // count
+            MPI_UNSIGNED_CHAR,                   // data type
+            1,                                   // source
+            MPI_ANY_TAG,                         // tag
+            MPI_COMM_WORLD,
+            MPI_STATUS_IGNORE // status
+        );
+    }
+    if (my_rank == comm_sz - 1)
+    {
+        // ricevo dal processo 0
+        // invio al processo comm_sz -2
+        MPI_Recv(
+            &my_next[sendcnts[my_rank] * 2 * N], // buf
+            N,                                   // count
+            MPI_UNSIGNED_CHAR,                   // data type
+            0,                                   // source
+            MPI_ANY_TAG,                         // tag
+            MPI_COMM_WORLD,
+            MPI_STATUS_IGNORE // status
+        );
+
+        MPI_Send(
+            my_next,           // buf
+            N,                 // count
+            MPI_UNSIGNED_CHAR, // data type
+            my_rank - 1,       // dest
+            0,                 // tag
+            MPI_COMM_WORLD);
+    }
+    if (my_rank > 0 && my_rank < comm_sz - 1)
+    {
+        if (my_rank % 2 == 0)
+        {
+            // invio a my_rank -1
+            // ricevo da my_rank +1
+            MPI_Send(
+                my_next,           // buf
+                N,                 // count
+                MPI_UNSIGNED_CHAR, // data type
+                my_rank - 1,       // dest
+                0,                 // tag
+                MPI_COMM_WORLD);
+
+            MPI_Recv(
+                &my_next[sendcnts[my_rank] * 2 * N], // buf
+                N,                                   // count
+                MPI_UNSIGNED_CHAR,                   // data type
+                my_rank + 1,                         // source
+                MPI_ANY_TAG,                         // tag
+                MPI_COMM_WORLD,
+                MPI_STATUS_IGNORE // status
+            );
+        }
+        if (my_rank % 2 == 1)
+        {
+            // ricevo da my_rank +1
+            // invio a my_rank -1
+            MPI_Recv(
+                &my_next[sendcnts[my_rank] * 2 * N], // buf
+                N,                                   // count
+                MPI_UNSIGNED_CHAR,                   // data type
+                my_rank + 1,                         // source
+                MPI_ANY_TAG,                         // tag
+                MPI_COMM_WORLD,
+                MPI_STATUS_IGNORE // status
+            );
+
+            MPI_Send(
+                my_next,           // buf
+                N,                 // count
+                MPI_UNSIGNED_CHAR, // data type
+                my_rank - 1,       // dest
+                0,                 // tag
+                MPI_COMM_WORLD);
+        }
+    }
+}
+
+void reconstruct_domain(cell_t *cur, cell_t *my_dom, int *sendcnts, int *displs, int N, int comm_sz, int my_rank, MPI_Datatype *two_row)
+{
+    // l'ultima riga di ogni dominio non è da considerare
+    // l'ultima riga valida dell'ultimo processo è la prima riga del dominio complessivo
+
+    /**
+     * l'ultimo processo manda al processo 0 la sua penultima riga (la prima del dom complessivo)
+     * ogni processo effettua una gatherv e invia i propi valori
+     */
+    if (my_rank == 0)
+    {
+        // ricevo la prima riga dall'ultimo processo nella prima posizione di cur
+        MPI_Recv(
+            cur,               // buf
+            N,                 // count
+            MPI_UNSIGNED_CHAR, // data type
+            comm_sz - 1,       // source
+            MPI_ANY_TAG,       // tag
+            MPI_COMM_WORLD,
+            MPI_STATUS_IGNORE // status
+        );
+        // ricevo l'ultima riga dall'ultimo processo
+        MPI_Recv(
+            &cur[N * (N - 1)], // buf  ricevo nel ultima riga
+            N,                 // count
+            MPI_UNSIGNED_CHAR, // data type
+            comm_sz - 1,       // source
+            MPI_ANY_TAG,       // tag
+            MPI_COMM_WORLD,
+            MPI_STATUS_IGNORE // status
+        );
+        sendcnts[comm_sz - 1]--;
+    }
+    if (my_rank == comm_sz - 1)
+    {
+        // invio la penultima riga al processo 0 che la riceve come prima riga
+        MPI_Send(
+            &my_dom[((sendcnts[my_rank] * 2) - 1) * N], // buf
+            N,                                          // count
+            MPI_UNSIGNED_CHAR,                          // data type
+            0,                                          // dest
+            0,                                          // tag
+            MPI_COMM_WORLD);
+        // invio la terzultima riga al processo 0 che la riceve come ultima
+        MPI_Send(
+            &my_dom[((sendcnts[my_rank] * 2) - 2) * N], // buf terzultima riga
+            N,                                          // count
+            MPI_UNSIGNED_CHAR,                          // data type
+            0,                                          // dest
+            0,                                          // tag
+            MPI_COMM_WORLD);
+        // abbasso il sendcont di uno
+        sendcnts[my_rank]--;
+    }
+
+    // gather dei risultati verso il th 0
+
+    MPI_Gatherv(
+        my_dom,            // const void *sendbuf
+        sendcnts[my_rank], // int sendcount
+        *two_row,          // MPI_Datatype sendtype
+        &cur[N],           // void *recvbuf         -> la prima riga è già completa
+        sendcnts,          // const int recvcounts[]
+        displs,            // const int displs[]
+        *two_row,          // MPI_Datatype recvtype
+        0,                 // int root
+        MPI_COMM_WORLD     // MPI_Comm comm
+    );
+
+    // correggo il sendcont dell'ultimo processo per il prossimo ciclo
+    if (my_rank == comm_sz - 1)
+    {
+        sendcnts[my_rank]++;
+    }
+}
 
 int main(int argc, char *argv[])
 {
@@ -360,6 +629,12 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
+    if (comm_sz > N / 2)
+    {
+        fprintf(stderr, "FATAL: number of MPI-process %d must be <= of domain size/2 (%d) \n", comm_sz, N / 2);
+        return EXIT_FAILURE;
+    }
+
     if ((filein = fopen(argv[argc - 1], "r")) == NULL)
     {
         fprintf(stderr, "FATAL: can not open \"%s\" for reading\n", argv[argc - 1]);
@@ -399,39 +674,15 @@ int main(int argc, char *argv[])
     cell_t *my_next = (cell_t *)malloc(N + (sendcnts[my_rank] * 2 * N) * sizeof(cell_t));
     assert(my_next != NULL);
 
-    // DBG
-
-    if (my_rank == 0)
-    {
-        printf("cur 0: \n");
-        for (int i = 0; i < N * N; i++)
-        {
-            if (i % N == 0)
-            {
-                printf("\n");
-            }
-            printf("%d ", cur[i]);
-        }
-        printf("\n\n");
-    }
-
     for (t = 0; t < nsteps; t++)
     {
-        //set di sendcnts e displs 
+        // set di sendcnts e displs
         for (i = 0; i < comm_sz; i++)
         {
             int start = ((N / 2) * i) / comm_sz;
             int end = ((N / 2) * (i + 1)) / comm_sz;
             sendcnts[i] = end - start;
             displs[i] = start;
-        }
-        if (my_rank == 0)
-        {
-            printf("Sendcnts: ");
-            for (i = 0; i < comm_sz; i++)
-            {
-                printf("%d ", sendcnts[i]);
-            }
         }
 
         // uso la scatterv per distribuire i dati
@@ -446,186 +697,86 @@ int main(int argc, char *argv[])
             0,                 // root
             MPI_COMM_WORLD);
 
-        // DBG
-        if (my_rank == 0 && t == 0)
-        {
-            printf("my_dom 0: \n");
-            for (int i = 0; i < (N * sendcnts[my_rank] * 2) + N; i++)
-            {
-                if (i % N == 0)
-                {
-                    printf("\n");
-                }
-                printf("%d ", my_dom[i]);
-            }
-            printf("\n\n");
-        }
-
 #ifdef DUMP_ALL
         if (my_rank == 0)
         {
-            write_image(cur, N, t);
+            // write_image(cur, N, t);
         }
 #endif
         step(my_dom, my_next, sendcnts[my_rank] * 2, N, EVEN_PHASE, my_rank);
 
-        // scambio delle ghost cells
-        // i processi di indice pari inviano al thread di indice più piccolo la loro prima riga
-        if (my_rank == 0)
-        {
-            // invio al ultimo processo
-            // ricevo dall'uno
-            MPI_Send(
-                my_next,           // buf
-                N,                 // count
-                MPI_UNSIGNED_CHAR, // data type
-                comm_sz - 1,       // dest
-                0,                 // tag
-                MPI_COMM_WORLD);
-
-            MPI_Recv(
-                &my_next[sendcnts[my_rank] * 2 * N], // buf
-                N,                                   // count
-                MPI_UNSIGNED_CHAR,                   // data type
-                1,                                   // source
-                MPI_ANY_TAG,                         // tag
-                MPI_COMM_WORLD,
-                MPI_STATUS_IGNORE // status
-            );
-        }
-        if (my_rank == comm_sz - 1)
-        {
-            // ricevo dal processo 0
-            // invio al processo comm_sz -2
-            MPI_Recv(
-                &my_next[sendcnts[my_rank] * 2 * N], // buf
-                N,                                   // count
-                MPI_UNSIGNED_CHAR,                   // data type
-                0,                                   // source
-                MPI_ANY_TAG,                         // tag
-                MPI_COMM_WORLD,
-                MPI_STATUS_IGNORE // status
-            );
-
-            MPI_Send(
-                my_next,           // buf
-                N,                 // count
-                MPI_UNSIGNED_CHAR, // data type
-                my_rank - 1,       // dest
-                0,                 // tag
-                MPI_COMM_WORLD);
-        }
-        if (my_rank > 0 && my_rank < comm_sz - 1)
-        {
-            if (my_rank % 2 == 0)
-            {
-                // invio a my_rank -1
-                // ricevo da my_rank +1
-                MPI_Send(
-                    my_next,           // buf
-                    N,                 // count
-                    MPI_UNSIGNED_CHAR, // data type
-                    my_rank - 1,       // dest
-                    0,                 // tag
-                    MPI_COMM_WORLD);
-
-                MPI_Recv(
-                    &my_next[sendcnts[my_rank] * 2 * N], // buf
-                    N,                                   // count
-                    MPI_UNSIGNED_CHAR,                   // data type
-                    my_rank + 1,                         // source
-                    MPI_ANY_TAG,                         // tag
-                    MPI_COMM_WORLD,
-                    MPI_STATUS_IGNORE // status
-                );
-            }
-            if (my_rank % 2 == 1)
-            {
-                // ricevo da my_rank +1
-                // invio a my_rank -1
-                MPI_Recv(
-                    &my_next[sendcnts[my_rank] * 2 * N], // buf
-                    N,                                   // count
-                    MPI_UNSIGNED_CHAR,                   // data type
-                    my_rank + 1,                         // source
-                    MPI_ANY_TAG,                         // tag
-                    MPI_COMM_WORLD,
-                    MPI_STATUS_IGNORE // status
-                );
-
-                MPI_Send(
-                    my_next,           // buf
-                    N,                 // count
-                    MPI_UNSIGNED_CHAR, // data type
-                    my_rank - 1,       // dest
-                    0,                 // tag
-                    MPI_COMM_WORLD);
-            }
-        }
+        invert_row_for_ODD(my_next, sendcnts, N, comm_sz, my_rank);
 
         step(&my_next[N], my_dom, sendcnts[my_rank] * 2, N, ODD_PHASE, my_rank);
 
-        // ora dentro a my_dom in ogni processo ci sono i valori corretti
-        // l'ultima riga di ogni dominio non è da considerare
-        // l'ultima riga dell'ultimo processo è la prima riga del dominio complessivo
-
-        /**
-         * l'ultimo processo manda al processo 0 la sua penultima riga (la prima del dom complessivo)
-         * ogni processo effettua una gatherv e invia i propi valori con offset opportuni da calcolare
-         */
+        reconstruct_domain(cur, my_dom, sendcnts, displs, N, comm_sz, my_rank, &two_row);
+    }
+#ifdef DUMP_ALL
+    /* Reverse all particles and go back to the initial state */
+    for (; t < 2 * nsteps; t++)
+    {
         if (my_rank == 0)
         {
-            // ricevo la prima riga dall'ultimo processo nella prima posizione di cur
-            MPI_Recv(
-                cur,               // buf
-                N,                 // count
-                MPI_UNSIGNED_CHAR, // data type
-                comm_sz - 1,       // source
-                MPI_ANY_TAG,       // tag
-                MPI_COMM_WORLD,
-                MPI_STATUS_IGNORE // status
-            );
-            // ricevo l'ultima riga dall'ultimo processo
-            MPI_Recv(
-                &cur[N * (N - 1)], // buf  ricevo nel ultima riga
-                N,                 // count
-                MPI_UNSIGNED_CHAR, // data type
-                comm_sz - 1,       // source
-                MPI_ANY_TAG,       // tag
-                MPI_COMM_WORLD,
-                MPI_STATUS_IGNORE // status
-            );
-            sendcnts[comm_sz - 1]--;
+            printf("%d \n", t - nsteps);
+            write_image(cur, N, t);
         }
-        if (my_rank == comm_sz - 1)
+        // set di sendcnts e displs
+
+        for (i = 0; i < comm_sz; i++)
         {
-            // invio la penultima riga al processo 0 che la riceve come prima riga
-            MPI_Send(
-                &my_dom[((sendcnts[my_rank] * 2) - 1) * N], // buf
-                N,                                          // count
-                MPI_UNSIGNED_CHAR,                          // data type
-                0,                                          // dest
-                0,                                          // tag
-                MPI_COMM_WORLD);
-            // invio la terzultima riga al processo 0 che la riceve come ultima
-            MPI_Send(
-                &my_dom[((sendcnts[my_rank] * 2) - 2) * N], // buf terzultima riga
-                N,                                          // count
-                MPI_UNSIGNED_CHAR,                          // data type
-                0,                                          // dest
-                0,                                          // tag
-                MPI_COMM_WORLD);
-            // abbasso il sendcont di uno
-            sendcnts[my_rank]--;
+            int start = ((N / 2) * i) / comm_sz;
+            int end = ((N / 2) * (i + 1)) / comm_sz;
+            sendcnts[i] = end - start;
+            displs[i] = start;
         }
 
-        // gather dei risultati verso il th 0
+        // uso la scatterv per distribuire i dati
+        MPI_Scatterv(
+            cur,               // senedbuf
+            sendcnts,          // sendcount
+            displs,            // offsets
+            two_row,           // datatype
+            my_dom,            // recvbuf
+            sendcnts[my_rank], // recvcount
+            two_row,           // recv data type
+            0,                 // root
+            MPI_COMM_WORLD);
 
-        MPI_Gatherv(
-            my_dom,            // const void *sendbuf
+        invert_row_for_ODD(my_dom, sendcnts, N, comm_sz, my_rank);
+        step(&my_dom[N], my_next, sendcnts[my_rank] * 2, N, ODD_PHASE, my_rank);
+        reconstruct_domain(cur, my_next, sendcnts, displs, N, comm_sz, my_rank, &two_row);
+        if (my_rank == 0)
+        {
+            printf("sendcnts: %d, %d, %d \n", sendcnts[0], sendcnts[1], sendcnts[2]);
+            printf("displs: %d, %d, %d \n", displs[0], displs[1], displs[2]);
+        }
+        
+        for (i = 0; i < comm_sz; i++)
+        {
+            int start = ((N / 2) * i) / comm_sz;
+            int end = ((N / 2) * (i + 1)) / comm_sz;
+            sendcnts[i] = end - start;
+            displs[i] = start;
+        }
+
+        MPI_Scatterv(
+            cur,               // senedbuf
+            sendcnts,          // sendcount
+            displs,            // offsets
+            two_row,           // datatype
+            my_dom,            // recvbuf
+            sendcnts[my_rank], // recvcount
+            two_row,           // recv data type
+            0,                 // root
+            MPI_COMM_WORLD);
+
+            step(my_dom, my_next, sendcnts[my_rank] * 2, N, EVEN_PHASE, my_rank);
+
+            MPI_Gatherv(
+            my_next,            // const void *sendbuf
             sendcnts[my_rank], // int sendcount
             two_row,           // MPI_Datatype sendtype
-            &cur[N],           // void *recvbuf         -> la prima riga è già completa
+            cur,               // void *recvbuf        
             sendcnts,          // const int recvcounts[]
             displs,            // const int displs[]
             two_row,           // MPI_Datatype recvtype
@@ -633,34 +784,6 @@ int main(int argc, char *argv[])
             MPI_COMM_WORLD     // MPI_Comm comm
         );
 
-        // correggo il sendcont dell'ultimo processo per il prossimo ciclo
-        if (my_rank == comm_sz - 1)
-        {
-            sendcnts[my_rank]++;
-        }
-
-        if (my_rank == 0)
-        {
-            printf("P.0 CUR POST ODD");
-            for (i = 0; i < N * N; i++)
-            {
-                if (i % N == 0)
-                {
-                    printf("\n");
-                }
-                printf("%d ", cur[i]);
-            }
-        }
-    }
-#ifdef DUMP_ALL
-    if (my_rank == 0)
-    {
-        for (; t < 2 * nsteps; t++)
-        {
-            write_image(cur, N, t);
-            step(cur, next, N, ODD_PHASE);
-            step(next, cur, N, EVEN_PHASE);
-        }
     }
 #endif
     if (my_rank == 0)

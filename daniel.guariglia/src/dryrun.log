@@ -1,0 +1,8 @@
+make --dry-run --always-make --keep-going --print-directory
+make: Entering directory '/home/daniel/Desktop/HPC/daniel.guariglia/src'
+cc -std=c99 -Wall -Wpedantic -O2 -fopenmp    omp-hpp.c  -lm -o omp-hpp
+mpicc -std=c99 -Wall -Wpedantic -O2    mpi-hpp.c  -lm -o mpi-hpp
+make: Leaving directory '/home/daniel/Desktop/HPC/daniel.guariglia/src'
+ 
+make: *** No rule to make target 'hpp', needed by 'ALL'.
+
