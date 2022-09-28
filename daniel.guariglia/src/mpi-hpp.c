@@ -1,82 +1,12 @@
-// progetto in MPI
-
-/****************************************************************************
- *
- * hpp.c - Serial implementaiton of the HPP model
- *
- * Copyright (C) 2021 by Moreno Marzolla <moreno.marzolla(at)unibo.it>
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
- * --------------------------------------------------------------------------
- *
- * Compile with
- *
- *         gcc -std=c99 -Wall -Wpedantic -O2 hpp.c -o hpp -lm
- *
- * Run with
- *
- *         ./hpp [N [S]] input
- *
- * Where N=side of the domain (must be even), S=number of time steps.
- *
- *
- * ## Example
- *
- * ./hpp 1024 256 walls.in
- *
- *
- * ## To produce an animation
- *
- * Compile with -DDUMP_ALL:
- *
- *      gcc -std=c99 -Wall -Wpedantic -O2 -DDUMP_ALL hpp.c -o hpp -lm
- *
- * then:
- *
- *      ffmpeg -y -i "hpp%05d.pgm" -vcodec mpeg4 movie.avi
- *
- *
- * ## Scene description language
- *
- * All cells of the domain are initially EMPTY. All coordinates are
- * real numbers in [0, 1]; they are automatically scaled to the
- * resolution N used for the image.
- *
- * c x y r t
- *
- *   Draw a circle centered ad (x, y) with radius r filled with
- *   particles of type t (0=WALL, 1=GAS, 2=EMPTY)
- *
- *
- * b x1 y1 x2 y2 t
- *
- *   Draw a rectangle with opposite corners (x1,y1) and (x2,y2) filled
- *   with particles of type t (0=WALL, 1=GAS, 2=EMPTY)
- *
- *
- * r x1 y1 x2 y2 p
- *
- *   Fill the rectangle with opposite corners (x1,y1), (x2,y2) with
- *   GAS particles with probability p \in [0, 1]. Only EMPTY cells
- *   might be filled with gas particles, everything else is not
- *   modified.
- *
- ****************************************************************************/
+/*
+* Author: Guariglia Daniel 0000916433
+* 
+*/
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h> /* for ceil() */
 #include <assert.h>
+#include <time.h>
 #include <mpi.h>
 
 typedef enum
@@ -138,10 +68,10 @@ void step(const cell_t *cur, cell_t *next, int Nrow, int Ncol, phase_t phase, in
              * dc
              * ba
              */
-            int a;
-            int b;
-            int c;
-            int d;
+            int a = 0;
+            int b = 0;
+            int c = 0;
+            int d = 0;
             // se è la fase pari calcolo gli indici "nel modo classico"
             if (phase == EVEN_PHASE)
             {
@@ -416,8 +346,9 @@ void invert_row_for_EVEN(cell_t *my_next, int *sendcnts, int N, int comm_sz, int
 
 void invert_row_for_ODD(cell_t *my_next, int *sendcnts, int N, int comm_sz, int my_rank)
 {
-    // scambio delle ghost cells
+    // scambio delle righe
     // i processi di indice pari inviano al thread di indice più piccolo la loro prima riga
+    // successivamente ricevono una riga in ultima posizione 
     if (my_rank == 0)
     {
         // invio al ultimo processo
@@ -597,6 +528,13 @@ int main(int argc, char *argv[])
     MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
     MPI_Comm_size(MPI_COMM_WORLD, &comm_sz);
 
+    //variabili per il calcolo del tempo di esecuzione
+    double begin = 0;
+    double end;
+
+    if(my_rank == 0){
+        begin = MPI_Wtime();
+    }
     srand(1234); /* Initialize PRNG deterministically */
 
     if ((argc < 2) || (argc > 4))
@@ -640,20 +578,25 @@ int main(int argc, char *argv[])
         fprintf(stderr, "FATAL: can not open \"%s\" for reading\n", argv[argc - 1]);
         return EXIT_FAILURE;
     }
-
+    
+    //datatype usato per semplificare lo scambio di dati
     MPI_Datatype two_row;
     int two_row_dim = 2 * N;
     MPI_Type_contiguous(two_row_dim, MPI_UNSIGNED_CHAR, &two_row);
     MPI_Type_commit(&two_row);
 
-    cell_t *cur;
+    cell_t *cur = NULL;
     const size_t GRID_SIZE = N * N * sizeof(cell_t);
-    int *displs = NULL;   // array di offset (in row)
-    int *sendcnts = NULL; // array contatore elementi da inviare (in row)
+    // array di offset (in row)
+    int *displs = NULL;   
+    // array contatore elementi da inviare (in two_row)
+    int *sendcnts = NULL; 
 
-    displs = (int *)malloc(comm_sz * sizeof(int));   // array di offset (in row)
-    sendcnts = (int *)malloc(comm_sz * sizeof(int)); // array contatore elementi da inviare (in row)
+    displs = (int *)malloc(comm_sz * sizeof(int));
+    sendcnts = (int *)malloc(comm_sz * sizeof(int)); 
+
     int i;
+    //calcolo array per l'invio di dati per scatterv e gatherv
     for (i = 0; i < comm_sz; i++)
     {
         int start = ((N / 2) * i) / comm_sz;
@@ -662,15 +605,15 @@ int main(int argc, char *argv[])
         displs[i] = start;
     }
 
+    //il processo 0 carica il dominio
     if (my_rank == 0)
     {
         cur = (cell_t *)malloc(GRID_SIZE);
         assert(cur != NULL);
         read_problem(filein, cur, N);
     }
-    // ogni processo crea il proprio dominio e next (con una ghost in fondo)
+    // ogni processo crea il proprio dominio e next (compresa una riga aggiuntiva)
     cell_t *my_dom = (cell_t *)malloc(N + (sendcnts[my_rank] * 2 * N) * sizeof(cell_t));
-
     cell_t *my_next = (cell_t *)malloc(N + (sendcnts[my_rank] * 2 * N) * sizeof(cell_t));
     assert(my_next != NULL);
 
@@ -700,15 +643,16 @@ int main(int argc, char *argv[])
 #ifdef DUMP_ALL
         if (my_rank == 0)
         {
-            // write_image(cur, N, t);
+            write_image(cur, N, t);
         }
 #endif
+        //esecuzione della fase pari (viene esclusa l'ultima riga)
         step(my_dom, my_next, sendcnts[my_rank] * 2, N, EVEN_PHASE, my_rank);
-
+        //scambio di righe tra processi
         invert_row_for_ODD(my_next, sendcnts, N, comm_sz, my_rank);
-
+        //esecuzione della fase dispari (viene esclusa la prima riga)
         step(&my_next[N], my_dom, sendcnts[my_rank] * 2, N, ODD_PHASE, my_rank);
-
+        //viene ricostruito il dominio complessivo nel processo 0
         reconstruct_domain(cur, my_dom, sendcnts, displs, N, comm_sz, my_rank, &two_row);
     }
 #ifdef DUMP_ALL
@@ -742,14 +686,11 @@ int main(int argc, char *argv[])
             0,                 // root
             MPI_COMM_WORLD);
 
+            //scambi di righe in preparazione alla fase dispari
         invert_row_for_ODD(my_dom, sendcnts, N, comm_sz, my_rank);
         step(&my_dom[N], my_next, sendcnts[my_rank] * 2, N, ODD_PHASE, my_rank);
+        //il dom viene ricostruito nel processo 0
         reconstruct_domain(cur, my_next, sendcnts, displs, N, comm_sz, my_rank, &two_row);
-        if (my_rank == 0)
-        {
-            printf("sendcnts: %d, %d, %d \n", sendcnts[0], sendcnts[1], sendcnts[2]);
-            printf("displs: %d, %d, %d \n", displs[0], displs[1], displs[2]);
-        }
         
         for (i = 0; i < comm_sz; i++)
         {
@@ -759,6 +700,7 @@ int main(int argc, char *argv[])
             displs[i] = start;
         }
 
+        //il dom viene diviso per l'esecuzione della fase pari
         MPI_Scatterv(
             cur,               // senedbuf
             sendcnts,          // sendcount
@@ -772,6 +714,7 @@ int main(int argc, char *argv[])
 
             step(my_dom, my_next, sendcnts[my_rank] * 2, N, EVEN_PHASE, my_rank);
 
+            //il dom complessivo viene ricostruito nel processo 0
             MPI_Gatherv(
             my_next,            // const void *sendbuf
             sendcnts[my_rank], // int sendcount
@@ -790,10 +733,21 @@ int main(int argc, char *argv[])
     {
         write_image(cur, N, t);
     }
+    if(cur != NULL){
+        free(cur);
+    }
+    if(my_next != NULL){
+        free(my_next);
+    }
+    if(my_dom != NULL){
+        free(my_dom);
+    }
 
-    free(cur);
-    // free(my_next);
-    free(my_dom);
+    if(my_rank == 0){
+        end = MPI_Wtime();
+        double time_spent = (double)(end - begin);
+        printf("Elapsed time: %lf \n", time_spent);
+    }
 
     fclose(filein);
     MPI_Finalize();

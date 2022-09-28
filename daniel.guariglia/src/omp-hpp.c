@@ -50,9 +50,9 @@ void step( const cell_t *cur, cell_t *next, int N, phase_t phase )
     assert(cur != NULL);
     assert(next != NULL);
     
-    
-    /*Parallel for, each thread compute a slice of the total of work, threads all
-    have the same number of operation to do because allways call swap_cells 2 times*/
+
+    //ogni thread calcola una porzione uguale del totale, tutti i thread eseguono lo stesso numero di operazioni
+    //ogni thread chiama sempre 2 chiamate a swap_cells
     #pragma omp parallel for default(shared) 
     for (i=0; i<N; i+=2) {
         for (j=0; j<N; j+=2) {
@@ -240,7 +240,7 @@ int main( int argc, char* argv[] )
 
     for (t=0; t<nsteps; t++) {
 #ifdef DUMP_ALL
-        //write_image(cur, N, t);
+        write_image(cur, N, t);
 #endif
         step(cur, next, N, EVEN_PHASE);
         step(next, cur, N, ODD_PHASE);
@@ -250,16 +250,6 @@ int main( int argc, char* argv[] )
     /* Reverse all particles and go back to the initial state */
     for (; t<2*nsteps; t++) {
         write_image(cur, N, t);
-        if(t < nsteps+2){
-                printf("cur in riavvolgimento:");
-            for(int i = 0; i < N*N; i++){
-                if(i%N == 0){
-                    printf("\n");
-                }
-                printf("%d ", cur[i]);
-            }
-            printf("\n\n");
-        }
 
         step(cur, next, N, ODD_PHASE);   
         step(next, cur, N, EVEN_PHASE);

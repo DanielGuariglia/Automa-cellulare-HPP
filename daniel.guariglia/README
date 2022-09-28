@@ -1,13 +1,27 @@
-Questo archivio contiene il materiale per il progetto del corso di
-High Performance Computing, laurea in Ingegneria e Scienze
-Informatiche, Universita' di Bologna sede di Cesena, AA 2021/2022.
+Istruzioni per la compilazione e l'esecuzione
 
-Il file README (questo file) deve contenere le istruzioni per la
-compilazione e l'esecuzione dei programmi consegnati; per comodita',
-nella directory src/ e' presente un Makefile che dovrebbe gia' essere
-in grado di compilare le versioni OpenMP, MPI e/o CUDA eventualmente
-presenti nella directory stessa. Si puo' modificare il Makefile
-fornito, oppure si puo' decidere di non usarlo ed effettuare la
-compilazione manualmente. In quest'ultimo caso, specificare in questo
-file i comandi da usare per la compilazione dei programmi.
+Versione OMP:
+
+- Compilazione
+        gcc -std=c99 -Wall -Wpedantic -O2 -fopenmp  omp-hpp.c -o omp-hpp -lm  
+
+- Esecuzione
+        ./omp-hpp N S input
+
+ Dove N=lato del dominio (N pari), S=numero di passi.
+
+
+Versione MPI:
+
+- Compilazione
+        mpicc -std=c99 -Wall -Wpedantic -O2 mpi-hpp.c -o mpi-hpp -lm  
+
+- Esecuzione
+        mpirun -n P mpi-hpp N S input
+
+ Dove P=Numero di processi, N=lato del dominio (N pari), S=numero di passi.
+
+
+
+
 
